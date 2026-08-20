@@ -1,5 +1,6 @@
 """TTS multiplataforma: Kokoro-ONNX (primario), edge-tts (fallback Windows)."""
 
+import re
 import os
 import sys
 import numpy as np
@@ -29,8 +30,9 @@ class KokoroONNXBackend(TTSBackend):
         self.sample_rate = 24000
         
         self.voice_map = {
-            "en": "af_heart", # American Female
-            "es": "ef_dora"   # Spanish Female (Nativa)
+            "en": "af_heart",   # American Female
+            "es": "ef_dora",    # Spanish Female (Nativa)
+            "ru": "af_heart"    # Russian Female (русский) - проверьте, есть ли такой голос
         }
 
     def generate(self, text: str, voice: str = None, speed: float = 1.1, lang: str = "en") -> np.ndarray:
@@ -49,8 +51,8 @@ class EdgeTTSBackend(TTSBackend):
     def __init__(self):
         self.sample_rate = 24000
         self.voice_map = {
-            "en": "en-US-EmmaNeural",
-            "es": "es-MX-DaliaNeural" # Voz mexicana muy natural
+            "en": "en-US-EmmaNeural", 
+            "ru": "ru-RU-SvetlanaNeural"
         }
         
     def generate(self, text: str, voice: str = None, speed: float = 1.1, lang: str = "en") -> np.ndarray:
@@ -58,6 +60,8 @@ class EdgeTTSBackend(TTSBackend):
         import io
         import edge_tts
         import soundfile as sf
+
+        clean_text = clean_text_for_tts(text)
         
         selected_voice = voice or self.voice_map.get(lang, "en-US-EmmaNeural")
         print(f"🔊 Generando audio Edge-TTS ({lang}) con voz: {selected_voice}")
@@ -65,14 +69,19 @@ class EdgeTTSBackend(TTSBackend):
         rate = f"{int((speed - 1) * 100):+d}%"
             
         async def _generate():
-            communicate = edge_tts.Communicate(text, selected_voice, rate=rate)
+            communicate = edge_tts.Communicate(clean_text, selected_voice, rate=rate)
             audio_data = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     audio_data += chunk["data"]
             return audio_data
         
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
         audio_data = loop.run_until_complete(_generate())
         audio, sr = sf.read(io.BytesIO(audio_data))
         
@@ -86,12 +95,12 @@ class EdgeTTSBackend(TTSBackend):
 def load() -> TTSBackend:
     """Load the best available TTS backend para Windows."""
     # Intentar kokoro-onnx primero (recomendado, offline)
-    try:
-        backend = KokoroONNXBackend()
-        print(f"TTS: kokoro-onnx (sample_rate={backend.sample_rate})")
-        return backend
-    except Exception as e:
-        print(f"TTS: kokoro-onnx falló ({e}), intentando edge-tts...")
+    # try:
+    #     backend = KokoroONNXBackend()
+    #     print(f"TTS: kokoro-onnx (sample_rate={backend.sample_rate})")
+    #     return backend
+    # except Exception as e:
+    #     print(f"TTS: kokoro-onnx falló ({e}), intentando edge-tts...")
         
     # Fallback a edge-tts (requiere internet)
     try:
@@ -105,3 +114,21 @@ def load() -> TTSBackend:
         "No se pudo cargar ningún backend de TTS. "
         "Instala kokoro-onnx o edge-tts: pip install kokoro-onnx o pip install edge-tts"
     )
+
+def clean_text_for_tts(text: str) -> str:
+    """Удаляет маркдаун-разметку и специальные символы из текста для TTS."""
+    # Удаляем **жирный**
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    # Удаляем *курсив*
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    # Удаляем __подчёркнутый__
+    text = re.sub(r'__(.*?)__', r'\1', text)
+    # Удаляем ~~зачёркнутый~~
+    text = re.sub(r'~~(.*?)~~', r'\1', text)
+    # Удаляем `код`
+    text = re.sub(r'`(.*?)`', r'\1', text)
+    # Удаляем заголовки (#)
+    text = re.sub(r'#+ ', '', text)
+    # Удаляем ссылки [текст](url) -> текст
+    text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)
+    return text.strip()

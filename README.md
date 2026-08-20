@@ -1,22 +1,25 @@
+# Run
+
+uv run python server.py
+
 # Parlor Vision — Windows + Ollama Edition
 
 Conversaciones de voz y visión con IA 100% local en tu máquina. Adaptado de macOS a Windows con Ollama, Whisper y Kokoro TTS. Optimizado para español con soporte para compartir pantalla.
 
 > **Estado actual:** Prototipo funcional. Conversaciones básicas operativas con latencia moderada y soporte multi-idioma.
 
-![texto del vínculo](https://miro.medium.com/1*psOrNqpYas3Nym3PyeyCVA.png)
----
+## ![texto del vínculo](https://miro.medium.com/1*psOrNqpYas3Nym3PyeyCVA.png)
 
 ## 🎯 Qué Logramos
 
 ### ✅ Migración Completa Mac → Windows
 
-| Componente | Original (macOS) | Windows Edition |
-|------------|-----------------|-----------------|
-| **Motor LLM** | `litert-lm` (Apple GPU) | **Ollama** (multiplataforma) |
-| **Modelo** | `gemma-4-E2B` (.litertlm) | **`gemma4:e2b`** (Ollama) |
-| **TTS** | `mlx-audio` (Apple Silicon) | **`kokoro-onnx`** (CPU) |
-| **Visión** | Nativa via LiteRT | **Via Ollama API** |
+| Componente    | Original (macOS)            | Windows Edition              |
+| ------------- | --------------------------- | ---------------------------- |
+| **Motor LLM** | `litert-lm` (Apple GPU)     | **Ollama** (multiplataforma) |
+| **Modelo**    | `gemma-4-E2B` (.litertlm)   | **`gemma4:e2b`** (Ollama)    |
+| **TTS**       | `mlx-audio` (Apple Silicon) | **`kokoro-onnx`** (CPU)      |
+| **Visión**    | Nativa via LiteRT           | **Via Ollama API**           |
 
 ### ✅ Reconocimiento de Voz (STT)
 
@@ -27,7 +30,7 @@ Conversaciones de voz y visión con IA 100% local en tu máquina. Adaptado de ma
 ### 🌎 Optimizado para Español
 
 - **Respuesta prioritaria en español** — El sistema detecta automáticamente cuando el usuario habla en español y fuerza respuestas **exclusivas** en ese idioma.
-- **System prompt dinámico reforzado** — Instrucciones explícitas que previenen respuestas en inglés: *"EL USUARIO TE ESTÁ HABLANDO EN ESPAÑOL. DEBES RESPONDER EXCLUSIVAMENTE EN ESPAÑOL."*
+- **System prompt dinámico reforzado** — Instrucciones explícitas que previenen respuestas en inglés: _"EL USUARIO TE ESTÁ HABLANDO EN ESPAÑOL. DEBES RESPONDER EXCLUSIVAMENTE EN ESPAÑOL."_
 - **Whisper configurado para español** — Transcripción forzada con `language="es"` y `initial_prompt` en español para mayor precisión.
 - **TTS con voz nativa hispana** — `ef_dora` (Kokoro, español) y `es-MX-DaliaNeural` (Edge-TTS fallback, voz mexicana profesional).
 - **Historial con contexto lingüístico** — Mantiene los últimos 20 intercambios para consistencia en idioma y tema.
@@ -56,12 +59,12 @@ Conversaciones de voz y visión con IA 100% local en tu máquina. Adaptado de ma
 
 ### ✅ Latencia Optimizada
 
-| Etapa | Primera vez | Subsiguientes |
-|-------|------------|---------------|
-| Whisper (STT) | ~1.2s | ~1.0s |
-| LLM (Ollama) | ~15-20s | ~2-4s |
-| TTS (Kokoro) | ~3-5s | ~3-4s |
-| **Total** | **~20-30s** | **~6-10s** |
+| Etapa         | Primera vez | Subsiguientes |
+| ------------- | ----------- | ------------- |
+| Whisper (STT) | ~1.2s       | ~1.0s         |
+| LLM (Ollama)  | ~15-20s     | ~2-4s         |
+| TTS (Kokoro)  | ~3-5s       | ~3-4s         |
+| **Total**     | **~20-30s** | **~6-10s**    |
 
 ---
 
@@ -71,22 +74,22 @@ Esta base de **visión local + análisis inteligente + alerta por voz** se adapt
 
 ### Uso Personal y Social
 
-| Caso | Ejemplo |
-|------|---------|
-| **Asistente Personal** | "¿Qué tengo pendiente hoy?" |
-| **Práctica de Idiomas** | Conversación fluida en español/inglés |
-| **Accesibilidad** | Interacción por voz para discapacidad visual |
-| **Educación** | Tutor conversacional local |
-| **Monitor de Seguridad** | Alerta cuando detecta personas o cambios |
+| Caso                     | Ejemplo                                      |
+| ------------------------ | -------------------------------------------- |
+| **Asistente Personal**   | "¿Qué tengo pendiente hoy?"                  |
+| **Práctica de Idiomas**  | Conversación fluida en español/inglés        |
+| **Accesibilidad**        | Interacción por voz para discapacidad visual |
+| **Educación**            | Tutor conversacional local                   |
+| **Monitor de Seguridad** | Alerta cuando detecta personas o cambios     |
 
 ### Uso Industrial y Comercial
 
-| Caso | Ejemplo |
-|------|---------|
-| **Control de Calidad** | Detecta defectos en línea de producción |
+| Caso                         | Ejemplo                                     |
+| ---------------------------- | ------------------------------------------- |
+| **Control de Calidad**       | Detecta defectos en línea de producción     |
 | **Mantenimiento Industrial** | Lee indicadores y detecta fallas en equipos |
-| **Supervisor de EPP** | Verifica uso de equipo de protección |
-| **Análisis de Pantalla** | Debugging de código consultando a la IA |
+| **Supervisor de EPP**        | Verifica uso de equipo de protección        |
+| **Análisis de Pantalla**     | Debugging de código consultando a la IA     |
 
 ---
 
@@ -181,11 +184,11 @@ Permite cámara y micrófono, ¡y habla!
 
 ## ⚙️ Configuración
 
-| Variable             | Default                        | Descripción                              |
-| -------------------- | ------------------------------ | ---------------------------------------- |
-| `OLLAMA_BASE_URL`    | `http://localhost:11434`       | URL del servidor Ollama                  |
-| `OLLAMA_MODEL`       | `gemma4:e2b`                   | Modelo Ollama a usar                     |
-| `PORT`               | `8000`                         | Puerto del servidor                      |
+| Variable          | Default                  | Descripción             |
+| ----------------- | ------------------------ | ----------------------- |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | URL del servidor Ollama |
+| `OLLAMA_MODEL`    | `gemma4:e2b`             | Modelo Ollama a usar    |
+| `PORT`            | `8000`                   | Puerto del servidor     |
 
 ### Ejemplo personalizado:
 
@@ -206,10 +209,12 @@ python server.py
 **Problema:** La primera interacción tarda ~20 segundos, las subsiguientes ~3s.
 
 **Causa:**
+
 - Carga inicial del modelo en memoria de GPU
 - Primera inferencia requiere warm-up de Ollama
 
 **Posibles soluciones:**
+
 - [ ] **Precarga del modelo:** Enviar petición dummy al iniciar servidor
 - [ ] **Modelo más ligero:** Probar `gemma3:4b` o `llama3.2:3b`
 - [ ] **Mantener modelo activo:** Evitar que Ollama descargue el modelo
@@ -219,15 +224,18 @@ python server.py
 **Problema:** A veces responde en inglés aunque le hables en español.
 
 **Causa:**
+
 - Gemma 4 tiende al inglés por defecto
 - Detección heurística no cubre todos los casos
 
 **Estado actual:**
+
 - ✅ Detecta español con palabras clave
 - ✅ Agrega instrucción explícita al system prompt
 - ❌ No funciona 100% consistente
 
 **Posibles soluciones:**
+
 - [ ] **Prompt más agresivo:** `"RESPONDE EXCLUSIVAMENTE EN ESPAÑOL. No uses inglés."`
 - [ ] **Modelo con mejor soporte español:** `qwen2.5:7b` o `llama3.2:3b`
 - [ ] **Traducción post-LLM:** Si detecta inglés, traducir respuesta
@@ -239,6 +247,7 @@ python server.py
 **Causa:** CUDA Toolkit no instalado o configuración incompleta.
 
 **Posibles soluciones:**
+
 - [ ] **Instalar CUDA Toolkit 12.x:** https://developer.nvidia.com/cuda-downloads
 - [ ] **Usar `whisper.cpp`:** Alternativa con mejor soporte Windows GPU
 - [ ] **Mantener CPU:** ~1s es aceptable para muchos casos
@@ -251,15 +260,16 @@ python server.py
 
 **Evaluación de alternativas:**
 
-| Modelo | Tamaño | GPU VRAM | Velocidad | Multi-idioma | Visión |
-|--------|--------|----------|-----------|--------------|--------|
-| `gemma4:e2b` | 7.2 GB | 6 GB | ⚡⚡⚡ | ⚠️ Parcial | ✅ Sí |
-| `gemma3:4b` | 3.3 GB | 4 GB | ⚡⚡⚡⚡ | ✅ Bueno | ✅ Sí |
-| `qwen2.5:7b` | 4.7 GB | 6 GB | ⚡⚡⚡ | ✅ Excelente | ❌ No |
-| `llama3.2-vision` | 3 GB | 4 GB | ⚡⚡⚡⚡ | ✅ Bueno | ✅ Sí |
-| `llama3.2:3b` | 2 GB | 2 GB | ⚡⚡⚡⚡⚡ | ⚠️ Parcial | ❌ No |
+| Modelo            | Tamaño | GPU VRAM | Velocidad  | Multi-idioma | Visión |
+| ----------------- | ------ | -------- | ---------- | ------------ | ------ |
+| `gemma4:e2b`      | 7.2 GB | 6 GB     | ⚡⚡⚡     | ⚠️ Parcial   | ✅ Sí  |
+| `gemma3:4b`       | 3.3 GB | 4 GB     | ⚡⚡⚡⚡   | ✅ Bueno     | ✅ Sí  |
+| `qwen2.5:7b`      | 4.7 GB | 6 GB     | ⚡⚡⚡     | ✅ Excelente | ❌ No  |
+| `llama3.2-vision` | 3 GB   | 4 GB     | ⚡⚡⚡⚡   | ✅ Bueno     | ✅ Sí  |
+| `llama3.2:3b`     | 2 GB   | 2 GB     | ⚡⚡⚡⚡⚡ | ⚠️ Parcial   | ❌ No  |
 
 **Recomendación a probar:**
+
 - **`llama3.2-vision`** — Balance velocidad/visión/multi-idioma
 - **`gemma3:4b`** — Más rápido que gemma4 con buena capacidad
 
@@ -268,6 +278,7 @@ python server.py
 **Problema:** Kokoro usa `af_heart` (voz femenina) por defecto.
 
 **Posibles soluciones:**
+
 - [ ] **Agregar selección de voces:** Kokoro tiene 10+ voces disponibles
 - [ ] **Integrar Edge-TTS:** Voces masculinas/femeninas de Azure
 - [ ] **Voz configurable:** Parámetro en UI o `.env`
@@ -279,6 +290,7 @@ python server.py
 **Causa:** VAD del navegador corta audio demasiado pronto.
 
 **Posibles soluciones:**
+
 - [ ] **Ajustar VAD:** `redemptionMs`, `minSpeechMs` en frontend
 - [ ] **Whisper con context:** Usar audio previo como contexto
 - [ ] **Punctuation restoration:** Modelo que añade puntuación

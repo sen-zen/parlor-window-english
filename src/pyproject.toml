@@ -26,7 +26,10 @@ dependencies = [
 # TTS alternativo con voces de Microsoft (requiere internet)
 edge-tts = ["edge-tts>=6.1.0"]
 # TTS alternativo Coqui (open source, mas pesado)
-coqui = ["TTS>=0.22.0"]
+# coqui = ["TTS>=0.22.0"]
 
 [tool.setuptools]
 py-modules = ["server", "tts"]
+
+[tool.uv]
+environments = ["python_version == '3.12'"]
