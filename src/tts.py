@@ -58,13 +58,15 @@ class EdgeTTSBackend(TTSBackend):
     def generate(self, text: str, voice: str = None, speed: float = 1.1, lang: str = "en") -> np.ndarray:
         import asyncio
         import io
+        import re
         import edge_tts
         import soundfile as sf
 
         clean_text = clean_text_for_tts(text)
+        has_ssml = bool(re.search(r'<lang\s+xml:lang=', clean_text))
         
         selected_voice = voice or self.voice_map.get(lang, "en-US-EmmaNeural")
-        print(f"🔊 Generando audio Edge-TTS ({lang}) con voz: {selected_voice}")
+        print(f"🔊 Generando audio Edge-TTS ({lang}) con voz: {selected_voice} {'(SSML)' if has_ssml else ''}")
         
         rate = f"{int((speed - 1) * 100):+d}%"
             
@@ -117,18 +119,29 @@ def load() -> TTSBackend:
 
 def clean_text_for_tts(text: str) -> str:
     """Удаляет маркдаун-разметку и специальные символы из текста для TTS."""
-    # Удаляем **жирный**
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    # Удаляем *курсив*
-    text = re.sub(r'\*(.*?)\*', r'\1', text)
-    # Удаляем __подчёркнутый__
-    text = re.sub(r'__(.*?)__', r'\1', text)
-    # Удаляем ~~зачёркнутый~~
-    text = re.sub(r'~~(.*?)~~', r'\1', text)
-    # Удаляем `код`
-    text = re.sub(r'`(.*?)`', r'\1', text)
-    # Удаляем заголовки (#)
-    text = re.sub(r'#+ ', '', text)
-    # Удаляем ссылки [текст](url) -> текст
-    text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)
+    if not text:
+        return ""
+    
+    # Сохраняем SSML-теги, заменяя их на временные маркеры
+    ssml_tags = []
+    def save_ssml(match):
+        ssml_tags.append(match.group(0))
+        return f"__SSML_{len(ssml_tags)-1}__"
+    
+    # Находим и сохраняем все теги <lang>
+    text = re.sub(r'<lang\s+xml:lang="[^"]*">.*?</lang>', save_ssml, text, flags=re.DOTALL)
+    
+    # Удаляем маркдаун
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # **жирный**
+    text = re.sub(r'\*(.*?)\*', r'\1', text)      # *курсив*
+    text = re.sub(r'__(.*?)__', r'\1', text)      # __подчёркнутый__
+    text = re.sub(r'~~(.*?)~~', r'\1', text)      # ~~зачёркнутый~~
+    text = re.sub(r'`(.*?)`', r'\1', text)        # `код`
+    text = re.sub(r'#+ ', '', text)               # заголовки
+    text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)  # ссылки
+    
+    # Возвращаем SSML-теги на место
+    for i, tag in enumerate(ssml_tags):
+        text = text.replace(f"__SSML_{i}__", tag)
+    
     return text.strip()

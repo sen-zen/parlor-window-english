@@ -26,6 +26,7 @@ models/
 # Captures / History
 captures/
 history.json
+progress.json
 conversation_history.json
 notes.json
 memory.json

@@ -1,6 +1,6 @@
 # Run
 
-uv run python server.py
+cd src && uv run python server.py
 
 # Parlor Vision — Windows + Ollama Edition
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -537,6 +537,10 @@
         <h1>Parlor Vision</h1>
       </div>
       <span class="model-label">Gemma 4 E2B</span>
+      <div class="progress-status">
+        <span>📚 Выучено слов: <span id="wordCount">0</span></span>
+        <span>📖 Тема: <span id="currentTopic">-</span></span>
+      </div>
       <div id="status" class="status-pill disconnected">Disconnected</div>
     </header>
 
@@ -772,6 +776,13 @@
         ws.onmessage = ({ data }) => {
           const msg = JSON.parse(data);
           if (msg.type === "text") {
+            if (msg.word_count !== undefined) {
+              document.getElementById("wordCount").textContent = msg.word_count;
+            }
+            if (msg.current_topic !== undefined) {
+              document.getElementById("currentTopic").textContent =
+                msg.current_topic;
+            }
             if (msg.transcription) {
               const userMsgs = messagesDiv.querySelectorAll(".msg.user");
               const lastUserMsg = userMsgs[userMsgs.length - 1];

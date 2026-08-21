@@ -1,0 +1,62 @@
+{
+  "learned_words": {
+    "good": {
+      "correct_count": 7,
+      "wrong_count": 0,
+      "last_practiced": "2026-08-21T22:55:13.335889",
+      "first_learned": "2026-08-21T22:41:37.022289"
+    },
+    "afternoon": {
+      "correct_count": 6,
+      "wrong_count": 0,
+      "last_practiced": "2026-08-21T22:55:13.335889",
+      "first_learned": "2026-08-21T22:41:37.022289"
+    },
+    "night": {
+      "correct_count": 4,
+      "wrong_count": 0,
+      "last_practiced": "2026-08-21T22:55:13.335889",
+      "first_learned": "2026-08-21T22:42:52.273384"
+    },
+    "morning": {
+      "correct_count": 3,
+      "wrong_count": 0,
+      "last_practiced": "2026-08-21T22:55:13.335889",
+      "first_learned": "2026-08-21T22:43:18.457505"
+    },
+    "how": {
+      "correct_count": 5,
+      "wrong_count": 0,
+      "last_practiced": "2026-08-21T22:55:13.335889",
+      "first_learned": "2026-08-21T22:43:46.019840"
+    },
+    "hello": {
+      "correct_count": 2,
+      "wrong_count": 0,
+      "last_practiced": "2026-08-21T22:55:13.335889",
+      "first_learned": "2026-08-21T22:53:31.027870"
+    },
+    "хай": {
+      "correct_count": 0,
+      "wrong_count": 1,
+      "last_practiced": null,
+      "first_learned": null
+    },
+    "fine": {
+      "correct_count": 2,
+      "wrong_count": 0,
+      "last_practiced": "2026-08-21T22:55:13.336890",
+      "first_learned": "2026-08-21T22:53:55.335567"
+    }
+  },
+  "current_topic": "Приветствия",
+  "total_sessions": 3,
+  "session": {
+    "start_time": "2026-08-21T22:55:13.334890",
+    "topic_offers": 0,
+    "last_topic_offer": null,
+    "words_learned_this_session": [],
+    "topic_offers_rejected": 0
+  },
+  "language": "en"
+}
