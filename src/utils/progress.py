@@ -195,7 +195,6 @@ def update_word_progress(progress: dict, word: str, success: bool = True):
     word = word.lower().strip()
 
     if word not in progress["learned_words"]:
-        print(f"📝 Новое слово: '{word}'")
         progress["learned_words"][word] = {
             "correct_count": 0,
             "wrong_count": 0,
@@ -208,10 +207,8 @@ def update_word_progress(progress: dict, word: str, success: bool = True):
         if not progress["learned_words"][word]["first_learned"]:
             progress["learned_words"][word]["first_learned"] = datetime.now().isoformat()
         progress["learned_words"][word]["last_practiced"] = datetime.now().isoformat()
-        print(f"✅ '{word}' правильно {progress['learned_words'][word]['correct_count']} раз")
     else:
         progress["learned_words"][word]["wrong_count"] += 1
-        print(f"❌ '{word}' ошибок: {progress['learned_words'][word]['wrong_count']}")
     
     return progress
 

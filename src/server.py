@@ -467,14 +467,9 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
         
         messages.append({"role": "system", "content": time_context})
 
-    # Добавляем контекст прогресса ПОСЛЕ создания messages
     learned = get_global_learned_words(progress)
-    review_needed = get_global_words_needing_review(progress, days=7)
     if learned:
-        context = f"Ученик уже выучил слова: {', '.join(learned[:20])}. "
-        if review_needed:
-            context += f"Особенно повтори слова: {', '.join(review_needed[:5])}. "
-        context += "Вводи новые слова, но не повторяй уже выученные без необходимости."
+        context = f"Ученик уже выучил слова: {', '.join(learned[:30])}. Вводи новые слова, но не повторяй уже выученные без необходимости."
         messages.append({"role": "system", "content": context})
     
     if history:
@@ -501,6 +496,7 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
     while attempt < max_attempts:
         attempt += 1
         print(f"🔄 Попытка {attempt}/{max_attempts}...")
+        print(f"Итоговое сообщение: {messages}")
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
@@ -591,18 +587,6 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
                             print(f"⚠️ Ошибка в слове: {word}")
                         else:
                             print(f"⚠️ Пропущено (не английское): {word}")
-
-                    
-                # Добавляем информацию о выученных словах в историю
-                if learned_words:
-                    learned_str = ", ".join(learned_words)
-                    # Добавляем системное сообщение о прогрессе
-                    if history:
-                        history.append({
-                            "role": "system",
-                            "content": f"Ученик выучил слова: {learned_str}"
-                        })
-
                     
                 save_global_progress(progress, lang)
                 # Возвращаем полный JSON-ответ от LLM для сохранения в историю
@@ -696,9 +680,6 @@ async def websocket_endpoint(ws: WebSocket):
                     assistant_msg = {
                         "role": "assistant",
                         "content": llm_response.get("text", ""),
-                        "timestamp": datetime.now().isoformat(),
-                        "words": llm_response.get("words", []),
-                        "mistakes": llm_response.get("mistakes", []),
                         "topic": llm_response.get("topic")
                     }
 

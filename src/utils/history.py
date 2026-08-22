@@ -9,7 +9,7 @@ from typing import List, Dict, Any
 EN_HISTORY_FILE = Path(__file__).parent.parent / "stores" / "en.history.json"
 RU_HISTORY_FILE = Path(__file__).parent.parent / "stores" / "ru.history.json"
 
-MAX_HISTORY_MESSAGES = 20  # Максимум сообщений в истории
+MAX_HISTORY_MESSAGES = 10  # Максимум сообщений в истории
 MAX_HISTORY_CHARS = 8000   # Примерный лимит символов
 
 
