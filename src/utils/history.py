@@ -9,6 +9,48 @@ from typing import List, Dict, Any
 EN_HISTORY_FILE = Path(__file__).parent.parent / "stores" / "en.history.json"
 RU_HISTORY_FILE = Path(__file__).parent.parent / "stores" / "ru.history.json"
 
+MAX_HISTORY_MESSAGES = 20  # Максимум сообщений в истории
+MAX_HISTORY_CHARS = 8000   # Примерный лимит символов
+
+
+def trim_history(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Обрезает историю до лимитов.
+    
+    Сохраняет системные сообщения, обрезает остальные.
+    
+    Args:
+        history: Список сообщений истории
+        
+    Returns:
+        Обрезанный список сообщений
+    """
+    if not history:
+        return []
+    
+    # 1. Обрезка по количеству сообщений
+    if len(history) > MAX_HISTORY_MESSAGES:
+        # Сохраняем системные сообщения
+        system_msgs = [m for m in history if m.get("role") == "system"]
+        other_msgs = [m for m in history if m.get("role") != "system"]
+        
+        # Оставляем последние N сообщений
+        other_msgs = other_msgs[-MAX_HISTORY_MESSAGES:]
+        history = system_msgs + other_msgs
+        print(f"📋 История обрезана по количеству: {len(history)} сообщений")
+    
+    # 2. Обрезка по символам (дополнительно)
+    total_chars = sum(len(str(m.get("content", ""))) for m in history)
+    if total_chars > MAX_HISTORY_CHARS:
+        # Удаляем старые сообщения, пока не уложимся в лимит
+        # Сохраняем минимум 3 сообщения (системное + последние 2)
+        while total_chars > MAX_HISTORY_CHARS and len(history) > 3:
+            # Удаляем второе сообщение (первое обычно системное)
+            removed = history.pop(1)
+            total_chars -= len(str(removed.get("content", "")))
+            print(f"📋 Удалено старое сообщение для экономии места")
+    
+    return history
+
 
 def load_history(lang: str = "en") -> List[Dict[str, Any]]:
     """Загружает историю диалогов для указанного языка.
@@ -26,7 +68,8 @@ def load_history(lang: str = "en") -> List[Dict[str, Any]]:
     
     try:
         with open(history_file, "r", encoding="utf-8") as f:
-            return json.load(f)
+            history = json.load(f)
+            return trim_history(history)
     except (json.JSONDecodeError, IOError):
         return []
 
@@ -39,10 +82,13 @@ def save_history(history: List[Dict[str, Any]], lang: str = "en") -> None:
         lang: Язык ("en" или "ru")
     """
     history_file = EN_HISTORY_FILE if lang == "en" else RU_HISTORY_FILE
-    
+    trimmed_history = trim_history(history)
+
     try:
+        history_file.parent.mkdir(parents=True, exist_ok=True)
+
         with open(history_file, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
+            json.dump(trimmed_history, f, ensure_ascii=False, indent=2)
     except IOError as e:
         print(f"Ошибка сохранения истории: {e}")
 

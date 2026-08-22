@@ -99,6 +99,17 @@ SYSTEM_PROMPT = (
     "   - Формат: \"Название темы\" "
     "   - Используй только когда тема меняется. "
     "   - Пример: \"Приветствия\", \"Семья\", \"Еда\", \"Цвета\" "
+    "5. 'keywords' — ОПЦИОНАЛЬНОЕ поле. Список ключевых слов для улучшения распознавания речи. "
+    "   - Формат: [\"слово1\", \"слово2\"] "
+    "   - Указывай 5-15 самых важных слов по текущей теме. "
+    "   - Эти слова будут использоваться для настройки распознавания речи. "
+    "   - Если тема меняется — обновляй список. "
+    "   - Если тема не меняется — оставляй тот же список. "
+    "   - Пример для темы 'Цвета': [\"red\", \"blue\", \"green\", \"yellow\", \"orange\", \"purple\", \"pink\", \"black\", \"white\"] "
+    "   - Пример для темы 'Семья': [\"mother\", \"father\", \"brother\", \"sister\", \"grandmother\", \"grandfather\", \"family\"] "
+    "   - Пример для темы 'Приветствия': [\"hello\", \"hi\", \"good morning\", \"good afternoon\", \"good evening\", \"goodbye\", \"bye\"] "
+    "   - ⚠️ ВСЕГДА добавляй поле 'keywords', когда ты начинаешь новую тему или когда тема меняется! "
+    "   - Если ты не уверен в словах — добавь хотя бы 5 основных слов по теме. "
 
     "ПРАВИЛА ФОРМАТИРОВАНИЯ JSON: "
     "1. ВСЕГДА экранируй двойные кавычки внутри любого поля обратным слешем: \\\" "
@@ -132,7 +143,8 @@ SYSTEM_PROMPT = (
     "2. Перед предложением новой темы всегда спрашивай: 'Мы выучили несколько новых слов. Хочешь попрактиковаться ещё или перейти к новой теме?' "
     "3. Если ученик говорит 'Ещё потренируемся', 'Давай ещё' или 'Не торопись' — продолжай текущую тему и не предлагай новую, пока ученик сам не попросит. "
     "4. Если ученик говорит 'Давай новую тему', 'Хочу что-то другое' или 'Надоело' — переходи к новой теме. "
-    "5. Ты не должен торопить ученика. Лучше хорошо выучить 10 слов, чем плохо — 20."
+    "5. Ты не должен торопить ученика. Лучше хорошо выучить 10 слов, чем плохо — 20. "
+    "6. ВСЕГДА добавляй поле 'keywords', когда ты начинаешь новую тему или когда тема меняется!"
 
     "ОТВЕТЫ НА ВОПРОСЫ: "
     "1. Когда ты задаёшь ученику вопрос на английском (например, 'Как сказать \"это мой папа\"?'), ОБЯЗАТЕЛЬНО жди ответа от ученика. "
@@ -363,6 +375,7 @@ def transcribe_audio(audio_base64: str, lang: str = None, debug: bool = False) -
         # Получаем текущую тему для контекста
         progress = load_global_progress("en")
         topic = progress.get("current_topic", "general")
+        keywords = progress.get("current_keywords", [])
         
         print(f"🎤 Обработка аудио ({len(wav_bytes)} байт), тема: {topic}")
         
@@ -376,7 +389,7 @@ def transcribe_audio(audio_base64: str, lang: str = None, debug: bool = False) -
             print(f"🔍 Язык автоматически определён: [{detected_lang}]")
         
         # Транскрибируем аудио с учётом языка
-        transcript, detected_lang = stt_backend.transcribe(wav_bytes, lang=detected_lang)
+        transcript, detected_lang = stt_backend.transcribe(wav_bytes, lang=detected_lang, keywords=keywords)
         
         if debug and transcript:
             print(f"🎤 Транскрипция [{detected_lang}]: '{transcript}'")
@@ -411,9 +424,15 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
     
     # Усиленная инструкция для JSON формата
     json_instruction = (
+        "🔴 КРИТИЧЕСКИ ВАЖНО: Вводи НОВОЕ слово в каждом вопросе! "
+        "НЕ повторяй одни и те же слова! "
+
+        "🔴 КРИТИЧЕСКИ ВАЖНО: Ты ОБЯЗАН добавлять поле 'keywords' КАЖДЫЙ РАЗ, когда начинаешь новую тему! "
+        "Это не опционально! Это обязательно! "
+
         "🔴 КРИТИЧЕСКИ ВАЖНО: Твой ответ ДОЛЖЕН быть ТОЛЬКО валидный JSON! "
         "Никаких преамбул, постскриптумов или текста вне фигурных скобок. "
-        "Только {\"text\": \"...\", \"words\": [...], \"mistakes\": [...], \"topic\": \"...\"} "
+        "Только {\"text\": \"...\", \"words\": [...], \"mistakes\": [...], \"topic\": \"...\"}, \"keywords\": [...]} "
         "Если не можешь сгенерировать JSON — верни: {\"text\": \"[JSON_ERROR]\", \"words\": [], \"mistakes\": []} "
     )
     
@@ -474,102 +493,133 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
             if msg.get("role") == "user":
                 msg["images"] = clean_images
                 break
-    
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json={
-                "model": OLLAMA_MODEL,
-                "messages": messages,
-                "stream": False,
-                "format": "json",  # Требовать JSON формат от модели
-                "think": False,  # Desactivar CoT para Gemma 4
-                "options": {
-                    "temperature": 0.3,  # Уменьшаем для более детерминированного вывода
-                    "num_predict": 800,
-                    "stop": ["\n\n", "\n---"]  # Избегаем пустых ответов
-                }
-            }
-        )
-        
-        if response.status_code != 200:
-            raise RuntimeError(f"Ollama error: {response.status_code}")
-        
-        res_json = response.json()
-        msg_data = res_json.get("message", {})
-        
-        # Пытаемся получить content или thinking
-        content = msg_data.get("content", "") if msg_data else ""
-        
+
+    max_attempts = 3
+    attempt = 0
+    last_error = None
+
+    while attempt < max_attempts:
+        attempt += 1
+        print(f"🔄 Попытка {attempt}/{max_attempts}...")
+
         try:
-            print(f"🔍 Сырой content: {repr(content)}...")
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json={
+                        "model": OLLAMA_MODEL,
+                        "messages": messages,
+                        "stream": False,
+                        "format": "json",  # Требовать JSON формат от модели
+                        "think": False,  # Desactivar CoT para Gemma 4
+                        "options": {
+                            "temperature": 0.3,  # Уменьшаем для более детерминированного вывода
+                            "num_predict": 800,
+                            "stop": ["\n\n", "\n---"]  # Избегаем пустых ответов
+                        }
+                    }
+                )
+                
+                if response.status_code != 200:
+                    raise RuntimeError(f"Ollama error: {response.status_code}")
+                
+                res_json = response.json()
+                msg_data = res_json.get("message", {})
+                content = msg_data.get("content", "") if msg_data else ""
+                
+                print(f"🔍 Сырой content: {content}")
+                    
+                # Ищем JSON паттерн внутри текста (с поддержкой массивов)
+                json_match = re.search(r'\{(?:[^{}]|\[(?:[^][])*\])+\}', content, re.DOTALL)
+                if json_match:
+                    print(f"🔍 Найден JSON внутри текста")
+                    raw_json = json_match.group(0)
+                    data = safe_json_parse(raw_json)
+                else:
+                    # JSON не найден — возвращаем пустой объект
+                    print(f"⚠️ JSON не найден в ответе")
+                    data = {}
             
-            # Ищем JSON паттерн внутри текста (с поддержкой массивов)
-            json_match = re.search(r'\{(?:[^{}]|\[(?:[^][])*\])+\}', content, re.DOTALL)
-            if json_match:
-                print(f"🔍 Найден JSON внутри текста")
-                raw_json = json_match.group(0)
-                data = safe_json_parse(raw_json)
-            else:
-                # JSON не найден — возвращаем пустой объект
-                print(f"⚠️ JSON не найден в ответе")
-                data = {}
-    
-            print(f"🔍 JSON текст: {data.get('text')}")
+                print(f"🔍 JSON текст: {data.get('text')}")
 
-            progress = load_global_progress(lang)
+                progress = load_global_progress(lang)
 
-            topic = data.get("topic")
-            if topic:
-                progress["current_topic"] = topic
-                progress["session"]["start_time"] = datetime.now().isoformat()
-                progress["session"]["topic_offers"] = 0
-                progress["session"]["topic_offers_rejected"] = 0
-                print(f"📚 Тема изменена на: {topic}")
+                topic = data.get("topic")
+                current_topic = progress.get("current_topic", "")
 
-            learned_words = data.get("words", [])
-            if learned_words:
-                for word in learned_words:
-                    if lang == "en" and is_english_word(word):
-                        update_global_word_progress(progress, word, success=True)
-                    else:
-                        print(f"⚠️ Пропущено (не английское): {word}")
+                keywords = data.get("keywords", [])
 
-            mistake_words = data.get("mistakes", [])
-            if mistake_words:
-                for word in mistake_words:
-                    if lang == "en" and is_english_word(word):
-                        update_global_word_progress(progress, word, success=False)
-                        print(f"⚠️ Ошибка в слове: {word}")
-                    else:
-                        print(f"⚠️ Пропущено (не английское): {word}")
-
-            
-            # Добавляем информацию о выученных словах в историю
-            if learned_words:
-                learned_str = ", ".join(learned_words)
-                # Добавляем системное сообщение о прогрессе
-                if history:
-                    history.append({
+                # Если тема изменилась, но keywords нет — требуем добавить
+                if topic and topic != current_topic and not keywords:
+                    print(f"⚠️ Тема изменилась на '{topic}', но keywords отсутствуют!")
+                    messages.append({
                         "role": "system",
-                        "content": f"Ученик выучил слова: {learned_str}"
+                        "content": (
+                            f"🔴 Ты только что сменил тему на '{topic}', но НЕ ДОБАВИЛ поле 'keywords'! "
+                            f"Это ОБЯЗАТЕЛЬНО! Добавь 'keywords' с 5-15 словами по теме '{topic}'. "
+                            f"Пример: 'keywords': ['word1', 'word2', 'word3']"
+                        )
                     })
+                    continue
 
-            
-            save_global_progress(progress, lang)
-            # Возвращаем полный JSON-ответ от LLM для сохранения в историю
-            return data
-        except json.JSONDecodeError as e:
-            print(f"⚠️ Ошибка парсинга JSON: {e}")
-            print(f"🔍 Сырой content: {repr(content[:100])}...")
-            # Возвращаем текст как fallback
-            return {"text": content.strip() if content else "Извините, произошла ошибка.", "words": [], "mistakes": []}
+
+                if keywords:
+                    progress = load_global_progress(lang)
+                    progress["current_keywords"] = keywords
+                    print(f"🔑 Ключевые слова обновлены: {keywords}")
+
+                if topic:
+                    progress["current_topic"] = topic
+                    progress["session"]["start_time"] = datetime.now().isoformat()
+                    progress["session"]["topic_offers"] = 0
+                    progress["session"]["topic_offers_rejected"] = 0
+                    print(f"📚 Тема изменена на: {topic}")
+
+                learned_words = data.get("words", [])
+                if learned_words:
+                    for word in learned_words:
+                        if lang == "en" and is_english_word(word):
+                            update_global_word_progress(progress, word, success=True)
+                        else:
+                            print(f"⚠️ Пропущено (не английское): {word}")
+
+                mistake_words = data.get("mistakes", [])
+                if mistake_words:
+                    for word in mistake_words:
+                        if lang == "en" and is_english_word(word):
+                            update_global_word_progress(progress, word, success=False)
+                            print(f"⚠️ Ошибка в слове: {word}")
+                        else:
+                            print(f"⚠️ Пропущено (не английское): {word}")
+
+                    
+                # Добавляем информацию о выученных словах в историю
+                if learned_words:
+                    learned_str = ", ".join(learned_words)
+                    # Добавляем системное сообщение о прогрессе
+                    if history:
+                        history.append({
+                            "role": "system",
+                            "content": f"Ученик выучил слова: {learned_str}"
+                        })
+
+                    
+                save_global_progress(progress, lang)
+                # Возвращаем полный JSON-ответ от LLM для сохранения в историю
+                return data
         except Exception as e:
-            print(f"⚠️ Неизвестная ошибка при парсинге JSON: {e}")
-            print(f"🔍 Сырой content: {repr(content[:100])}...")
-            # Возвращаем текст как fallback
-            return {"text": content.strip() if content else "Извините, произошла ошибка.", "words": [], "mistakes": []}
+            last_error = e
+            print(f"⚠️ Ошибка в попытке {attempt}: {e}")
 
+            if attempt < max_attempts:
+                print(f"🔄 Повторная попытка...")
+                await asyncio.sleep(0.5)  # Небольшая пауза
+                continue
+            else:
+                raise
+
+    print(f"❌ Все {max_attempts} попыток не удались")
+    return {"text": "Извините, произошла ошибка. Попробуйте ещё раз.", "words": [], "mistakes": []}
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
@@ -634,7 +684,7 @@ async def websocket_endpoint(ws: WebSocket):
 
                     llm_response = await ollama_chat(
                         transcript=transcript,
-                        lang=lang,
+                        lang=last_detected_lang,
                         images=[msg["image"]] if msg.get("image") else None,
                         user_text=msg.get("text"),
                         history=conversation_history,
@@ -695,7 +745,7 @@ async def websocket_endpoint(ws: WebSocket):
 
                         try:
                             pcm = await asyncio.get_event_loop().run_in_executor(
-                                None, lambda s=sentence: tts_backend.generate(s, lang=lang)
+                                None, lambda s=sentence: tts_backend.generate(s, lang=last_detected_lang)
                             )
                             pcm_int16 = (pcm * 32767).clip(-32768, 32767).astype(np.int16)
                             await ws.send_text(json.dumps({

@@ -54,7 +54,6 @@ class WhisperBackend(STTBackend):
         """
         try:
             model = self._load_model()
-            
             # Создаём временный файл для аудио
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
                 tmp_path = tmp_file.name
@@ -64,7 +63,7 @@ class WhisperBackend(STTBackend):
             segments, info = model.transcribe(
                 tmp_path,
                 language=None,  # Автоопределение
-                beam_size=1,
+                beam_size=8,
                 vad_filter=True,
                 initial_prompt="PAUSE PAUSE",
                 task="transcribe",
@@ -108,12 +107,13 @@ class WhisperBackend(STTBackend):
         
         return result
     
-    def transcribe(self, audio_bytes: bytes, lang: Optional[str] = None) -> Tuple[str, str]:
+    def transcribe(self, audio_bytes: bytes, lang: Optional[str] = None, keywords: Optional[list[str]] = None) -> Tuple[str, str]:
         """Распознаёт речь из аудио.
         
         Args:
             audio_bytes: Байты аудиофайла
             lang: Язык транскрипции (опционально)
+            keywords: Ключевые слова для initial_prompt (опционально)
             
         Returns:
             Транскрипция и detected language
@@ -132,7 +132,13 @@ class WhisperBackend(STTBackend):
                     last_lang=self._last_detected_lang
                 )
                 print(f"Язык: {language} (вероятность: {language_probability:.2f})")
-            
+
+
+            initial_prompt = "PAUSE PAUSE"
+            if keywords:
+                initial_prompt = ". ".join(keywords[:15]) + "."
+                print(f"🔑 Язык: initial_prompt из keywords: {initial_prompt[:50]}...")
+
             # Создаём временный файл для аудио
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
                 tmp_path = tmp_file.name
@@ -148,6 +154,7 @@ class WhisperBackend(STTBackend):
                 condition_on_previous_text=False,
                 max_new_tokens=256,
                 temperature=0.0,
+                initial_prompt=initial_prompt,
                 task="transcribe",
             )
             
