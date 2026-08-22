@@ -800,8 +800,10 @@
             if (ignoreIncomingAudio) return;
             queueAudioChunk(msg.audio);
           } else if (msg.type === "audio_end") {
+            // Всегда сбрасываем флаг ignoreIncomingAudio при завершении TTS
+            ignoreIncomingAudio = false;
+
             if (ignoreIncomingAudio) {
-              ignoreIncomingAudio = false;
               stopPlayback();
               setState("listening");
               return;
@@ -958,7 +960,7 @@
 
       function ensureAudioCtx() {
         if (!audioCtx) {
-          audioCtx = new AudioContext();
+          audioCtx = new AudioContext({ sampleRate: streamSampleRate });
           analyser = audioCtx.createAnalyser();
           analyser.fftSize = 256;
           analyser.smoothingTimeConstant = 0.75;
@@ -968,7 +970,13 @@
       function startStreamPlayback() {
         stopPlayback();
         ensureAudioCtx();
-        if (audioCtx.state === "suspended") audioCtx.resume();
+
+        if (audioCtx.state === "suspended") {
+          audioCtx
+            .resume()
+            .catch((err) => console.error("AudioContext resume failed:", err));
+        }
+
         streamNextTime = audioCtx.currentTime + 0.05; // Small initial buffer
         speakingStartedAt = Date.now();
         setState("speaking");

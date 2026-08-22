@@ -150,7 +150,7 @@ def safe_json_parse(text: str) -> dict:
         text: Текст, содержащий JSON
         
     Returns:
-        Словарь с распарсенными данными
+        Словарь с распарсенными данными или пустой словарь при ошибках
     """
     # 1. Извлекаем JSON-объект
     json_str = extract_json_object(text)
@@ -164,28 +164,5 @@ def safe_json_parse(text: str) -> dict:
     except json.JSONDecodeError:
         pass
     
-    # 3. Извлекаем пары ключ-значение через регулярки
-    result = {}
-    pairs = find_json_key_value_pairs(json_str)
-    
-    for key, value_str in pairs:
-        parsed_value = parse_json_value(value_str)
-        
-        # Для объектов и массивов — рекурсивный парсинг
-        if isinstance(parsed_value, str):
-            if parsed_value.startswith('{'):
-                try:
-                    nested_obj = json.loads('{' + parsed_value + '}')
-                    result[key] = nested_obj
-                except:
-                    result[key] = parsed_value
-            elif parsed_value.startswith('['):
-                try:
-                    nested_arr = json.loads('[' + parsed_value + ']')
-                    result[key] = nested_arr
-                except:
-                    result[key] = parsed_value
-        else:
-            result[key] = parsed_value
-    
-    return result
+    # 3. Возвращаем пустой объект при ошибках (без fallback)
+    return {}

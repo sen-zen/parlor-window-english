@@ -351,6 +351,15 @@ def transcribe_audio(audio_base64: str, debug: bool = False) -> tuple[str, str]:
             # Показываем сырую транскрипцию для отладки
             print(f"   Сырой текст: {repr(transcript)}")
         
+        # Нормализуем транскрипцию: убираем лишние пробелы, добавляем пробелы перед знаками препинания
+        if transcript:
+            # Заменяем множественные пробелы на один
+            transcript = re.sub(r'\s+', ' ', transcript)
+            # Добавляем пробел перед знаками препинания (если нет пробела)
+            transcript = re.sub(r'([.,!?;:])', r' \1', transcript)
+            # Убираем лишнюю пунктуацию в начале строки
+            transcript = re.sub(r'^[.,!?;:]+', '', transcript)
+        
         # Если транскрипция пустая или слишком короткая — предупреждаем
         if not transcript or len(transcript.strip()) < 3:
             print(f"⚠️ Транскрипция слишком короткая или пустая: '{transcript}'")
@@ -462,25 +471,17 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
         try:
             print(f"🔍 Сырой content: {repr(content[:100])}...")
             
-            # Ищем JSON паттерн внутри текста
-            # Если не нашли — пробуем найти любой JSON
-            json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+            # Ищем JSON паттерн внутри текста (с поддержкой массивов)
+            json_match = re.search(r'\{(?:[^{}]|\[(?:[^][])*\])+\}', content, re.DOTALL)
             if json_match:
                 print(f"🔍 Найден JSON внутри текста")
-
-                try:
-                    raw_json = json_match.group(0)
-                    data = safe_json_parse(raw_json)
-                except Exception as e:
-                    print(f"⚠️ Ошибка парсинга JSON: {e}")
-                    print(f"🔍 Сырой ответ: {repr(content[:200])}...")
-                    # Fallback — возвращаем текст как есть
-                    data = {"text": content, "words": [], "mistakes": []}
+                raw_json = json_match.group(0)
+                data = safe_json_parse(raw_json)
             else:
-                # Если JSON не найден — пробуем весь текст как JSON
-                print(f"⚠️ JSON не найден, пробуем весь текст как JSON")
-                data = {"text": content, "words": [], "mistakes": []}
-
+                # JSON не найден — возвращаем пустой объект
+                print(f"⚠️ JSON не найден в ответе")
+                data = {}
+    
             print(f"🔍 JSON текст: {data.get('text')}")
 
             progress = load_global_progress(lang)
@@ -504,8 +505,12 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
             mistake_words = data.get("mistakes", [])
             if mistake_words:
                 for word in mistake_words:
-                    update_global_word_progress(progress, word, success=False)
-                    print(f"⚠️ Ошибка в слове: {word}")
+                    if lang == "en" and is_english_word(word):
+                        update_global_word_progress(progress, word, success=False)
+                        print(f"⚠️ Ошибка в слове: {word}")
+                    else:
+                        print(f"⚠️ Пропущено (не английское): {word}")
+
             
             # Добавляем информацию о выученных словах в историю
             if learned_words:
@@ -541,7 +546,7 @@ async def websocket_endpoint(ws: WebSocket):
     conversation_history = load_history_from_file("en")
     interrupted = asyncio.Event()
     msg_queue = asyncio.Queue()
-
+    
     # Проверяем сессию и создаём новую, если нужно
     session_minutes, _ = get_global_session_time(progress)
     if session_minutes == 0 or progress["session"].get("start_time") is None:
@@ -570,107 +575,102 @@ async def websocket_endpoint(ws: WebSocket):
 
             interrupted.clear()
             
-            # 1. Transcripción
-            transcript = ""
+            # 1. Транскрипция (текст, если нет аудио)
+            transcript = msg.get("text") or ""
             lang = last_detected_lang
             if msg.get("audio"):
                 transcript, detected_lang = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: transcribe_audio(msg["audio"], debug=True)
                 )
-                
-            # Определяем язык для сохранения прогресса:
-            # если транскрипция содержит английские слова — используем 'en'
-            if detected_lang == "ru" and transcript:
-                english_chars = len(re.findall(r'[a-zA-Z]{3,}', transcript))
-                russian_chars = len(re.findall(r'[а-яА-ЯёЁ]', transcript))
-                # Если английских букв больше — это английский язык (даже с русским акцентом)
-                if english_chars > russian_chars * 0.5:
-                    print(f"🌐 Язык: en (английские слова в транскрипции)")
-                    lang = "en"
-                    if transcript:
-                        print(f"🎤 Transcribed [{lang}]: {transcript[:60]}...")
-            
-            # 2. LLM
-            t0 = time.time()
-            try:
-                user_message = transcript
-                print(f"💬 Сообщение: {transcript[:50]}...")
+                lang = detected_lang
 
-                conversation_history.append({"role": "user", "content": user_message or transcript or "..."})
 
-                llm_response = await ollama_chat(
-                    transcript=transcript,
-                    lang=lang,
-                    images=[msg["image"]] if msg.get("image") else None,
-                    user_text=msg.get("text"),
-                    history=conversation_history,
-                    session_start_time=datetime.fromisoformat(progress["session"]["start_time"]).timestamp()
-                )
-                llm_time = time.time() - t0
-                print(f"✅ LLM ({llm_time:.2f}s): {llm_response.get('text', '')[:100]}...")
-
-                # Сохраняем полный ответ от LLM в историю с меткой времени
-                assistant_msg = {
-                    "role": "assistant",
-                    "content": llm_response.get("text", ""),
-                    "timestamp": datetime.now().isoformat(),
-                    "words": llm_response.get("words", []),
-                    "mistakes": llm_response.get("mistakes", []),
-                    "topic": llm_response.get("topic")
-                }
-                conversation_history.append(assistant_msg)
-                
-                save_history_to_file(conversation_history, "en")
-            
-            except Exception as e:
-                print(f"❌ LLM error: {e}")
-                llm_response = {"text": "Извините, произошла ошибка. Попробуйте ещё раз.", "words": [], "mistakes": []}
-                llm_time = 0
-            
-            # Отправляем клиенту ТОЛЬКО текст ответа
-            await ws.send_text(json.dumps({
-                "type": "text", 
-                "text": llm_response.get("text", ""), 
-                "llm_time": round(llm_time, 2),
-                "transcription": transcript,
-                "language": lang
-            }))
-
-            # 3. TTS
-            sentences = split_sentences(llm_response.get("text", ""))
-            
-            await ws.send_text(json.dumps({
-                "type": "audio_start",
-                "sample_rate": tts_backend.sample_rate,
-                "sentence_count": len(sentences),
-            }))
-
-            for i, sentence in enumerate(sentences):
-                if interrupted.is_set():
-                    break
+            # 2. LLM — только если есть транскрипция и прошло достаточно времени после последнего сообщения пользователя
+            if transcript:
+                t0 = time.time()
                 try:
-                    if detect_english_words(sentence):
-                        tts_lang = "en"
-                    else:
-                        tts_lang = "ru"
+                    print(f"💬 Сообщение: {transcript[:50]}...")
 
-                    pcm = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda s=sentence: tts_backend.generate(s, lang=tts_lang)
+                    conversation_history.append({"role": "user", "content": transcript or "..."})
+
+                    llm_response = await ollama_chat(
+                        transcript=transcript,
+                        lang=lang,
+                        images=[msg["image"]] if msg.get("image") else None,
+                        user_text=msg.get("text"),
+                        history=conversation_history,
+                        session_start_time=datetime.fromisoformat(progress["session"]["start_time"]).timestamp()
                     )
-                    pcm_int16 = (pcm * 32767).clip(-32768, 32767).astype(np.int16)
-                    await ws.send_text(json.dumps({
-                        "type": "audio_chunk",
-                        "audio": base64.b64encode(pcm_int16.tobytes()).decode(),
-                        "index": i,
-                    }))
-                except Exception as e:
-                    print(f"TTS error: {e}")
-            
-            if not interrupted.is_set():
-                await ws.send_text(json.dumps({"type": "audio_end"}))
+                    llm_time = time.time() - t0
 
+                    # Сохраняем полный ответ от LLM в истории с меткой времени
+                    assistant_msg = {
+                        "role": "assistant",
+                        "content": llm_response.get("text", ""),
+                        "timestamp": datetime.now().isoformat(),
+                        "words": llm_response.get("words", []),
+                        "mistakes": llm_response.get("mistakes", []),
+                        "topic": llm_response.get("topic")
+                    }
+
+                    conversation_history.append(assistant_msg)
+                    
+                    save_history_to_file(conversation_history, "en")
+                except Exception as e:
+                    print(f"❌ LLM error: {e}")
+                    llm_response = {"text": "", "words": [], "mistakes": []}  # Пустой текст вместо ошибки
+                    llm_time = 0
+                
+                # Отправляем клиенту ТОЛЬКО текст ответа
+                response_text = llm_response.get("text", "")
+                if not response_text:
+                    print(f"⚠️ LLM вернул пустой текст, отправляем дефолтный ответ")
+                    response_text = "Извините, я не смог сгенерировать ответ. Попробуйте ещё раз."
+
+                await ws.send_text(json.dumps({
+                    "type": "text", 
+                    "text": response_text, 
+                    "llm_time": round(llm_time, 2),
+                    "transcription": transcript,
+                    "language": lang
+                }))
+
+                # 3. TTS — только если есть текст ответа
+                if response_text:
+                    sentences = split_sentences(response_text)
+                    
+                    # Если нет предложений — отправляем один сегмент с полным текстом
+                    if not sentences or len(sentences) == 0:
+                        sentences = [response_text]
+                    
+                    await ws.send_text(json.dumps({
+                        "type": "audio_start",
+                        "sample_rate": tts_backend.sample_rate,
+                        "sentence_count": len(sentences),
+                    }))
+
+                    for i, sentence in enumerate(sentences):
+                        if interrupted.is_set():
+                            print(f"⏸️  TTS прерван после предложения {i}")
+                            break
+
+                        try:
+                            pcm = await asyncio.get_event_loop().run_in_executor(
+                                None, lambda s=sentence: tts_backend.generate(s, lang=lang)
+                            )
+                            pcm_int16 = (pcm * 32767).clip(-32768, 32767).astype(np.int16)
+                            await ws.send_text(json.dumps({
+                                "type": "audio_chunk",
+                                "audio": base64.b64encode(pcm_int16.tobytes()).decode(),
+                                "index": i,
+                            }))
+                        except Exception as e:
+                            print(f"TTS error при генерации предложения {i}: {e}")
+                            # Продолжаем с остальными предложениями
+
+                    await ws.send_text(json.dumps({"type": "audio_end"}))
     except WebSocketDisconnect:
-        print("Client disconnected")
+        print("👋 Клиент отключился")
     finally:
         recv_task.cancel()
 
