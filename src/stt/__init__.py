@@ -16,7 +16,6 @@ def create_stt_backend(
     compute_type: str = "float16",
     download_root: str = "./models/whisper",
     word_timestamps: bool = True,
-    vad_parameters: Dict[str, Any] = None,
     post_process: bool = True
 ) -> STTBackend:
     """
@@ -29,7 +28,6 @@ def create_stt_backend(
         compute_type: Тип вычислений (float16, int8, float32).
         download_root: Папка для загрузки моделей.
         word_timestamps: Включать временные метки для каждого слова.
-        vad_parameters: Параметры Voice Activity Detection.
         post_process: Включать пост-обработку транскрипции.
         
     Returns:
@@ -52,7 +50,6 @@ def create_stt_backend(
             compute_type=compute_type,
             download_root=download_root,
             word_timestamps=word_timestamps,
-            vad_parameters=vad_parameters,
             post_process=post_process
         )
 

@@ -486,6 +486,13 @@
         border-color: rgba(74, 222, 128, 0.15);
       }
 
+      /* Стили для активных кнопок языка */
+      .lang-btn.active {
+        background: var(--c-listen-dim);
+        color: var(--c-listen);
+        border-color: rgba(74, 222, 128, 0.15);
+      }
+
       .state-indicator {
         display: flex;
         align-items: center;
@@ -563,6 +570,16 @@
       <div class="controls">
         <button id="cameraToggle" class="ctrl-btn active">Camera On</button>
         <button id="screenShareToggle" class="ctrl-btn">Share Screen</button>
+
+        <!-- Кнопки переключения языка -->
+        <div class="language-switcher">
+          <button data-lang="ru" class="ctrl-btn lang-btn">RU</button>
+          <button data-lang="en" class="ctrl-btn lang-btn">EN</button>
+          <button data-lang="auth" class="ctrl-btn lang-btn active">
+            AUTH
+          </button>
+        </div>
+
         <div class="state-indicator">
           <div id="stateDot" class="dot loading"></div>
           <span id="stateText">Loading...</span>
@@ -603,6 +620,14 @@
       let audioCtx, currentSource;
       let state = "loading";
       let ignoreIncomingAudio = false;
+
+      // ── Языковые настройки ──
+      const LANGUAGES = {
+        ru: { name: "ru", lang: "ru" },
+        en: { name: "en", lang: "en" },
+        auth: { name: "auth", lang: "" },
+      };
+      let currentLang = LANGUAGES.auth; // Текущий язык
 
       // Streaming audio playback state
       let streamSampleRate = 24000;
@@ -775,22 +800,28 @@
         };
         ws.onmessage = ({ data }) => {
           const msg = JSON.parse(data);
+
+          // Обновляем статистику в хедере
+          if (msg.word_count !== undefined) {
+            document.getElementById("wordCount").textContent = msg.word_count;
+          }
+          if (msg.current_topic !== undefined) {
+            document.getElementById("currentTopic").textContent =
+              msg.current_topic;
+          }
+
+          // Обработка транскрипции пользователя
+          if (msg.transcription) {
+            const userMsgs = messagesDiv.querySelectorAll(".msg.user");
+            const lastUserMsg = userMsgs[userMsgs.length - 1];
+            if (lastUserMsg) {
+              const meta = lastUserMsg.querySelector(".meta");
+              lastUserMsg.innerHTML = `${msg.transcription}${meta ? meta.outerHTML : ""}`;
+            }
+          }
+
+          // Обработка ответа LLM
           if (msg.type === "text") {
-            if (msg.word_count !== undefined) {
-              document.getElementById("wordCount").textContent = msg.word_count;
-            }
-            if (msg.current_topic !== undefined) {
-              document.getElementById("currentTopic").textContent =
-                msg.current_topic;
-            }
-            if (msg.transcription) {
-              const userMsgs = messagesDiv.querySelectorAll(".msg.user");
-              const lastUserMsg = userMsgs[userMsgs.length - 1];
-              if (lastUserMsg) {
-                const meta = lastUserMsg.querySelector(".meta");
-                lastUserMsg.innerHTML = `${msg.transcription}${meta ? meta.outerHTML : ""}`;
-              }
-            }
             addMessage("assistant", msg.text, `LLM ${msg.llm_time}s`);
           } else if (msg.type === "audio_start") {
             if (ignoreIncomingAudio) return;
@@ -910,7 +941,7 @@
           imageBase64 ? "with camera" : "",
         );
 
-        const payload = { audio: wavBase64 };
+        const payload = { audio: wavBase64, lang: currentLang.lang };
         if (imageBase64) payload.image = imageBase64;
         ws.send(JSON.stringify(payload));
       }
@@ -1067,6 +1098,41 @@
             console.warn("Screen share cancelled");
           }
         }
+      });
+
+      // ── Языковые кнопки ──
+      const langButtons = document.querySelectorAll(".lang-btn");
+
+      langButtons.forEach((btn) => {
+        btn.classList.remove("active");
+
+        const attrLang = btn.getAttribute("data-lang");
+        if (attrLang === currentLang.name) {
+          btn.classList.add("active");
+        }
+
+        btn.addEventListener("click", () => {
+          const newLang = LANGUAGES[btn.dataset.lang];
+          if (newLang) {
+            currentLang = newLang;
+            console.log(
+              `Язык переключён на: ${newLang.name} (${newLang.ttsLang})`,
+            );
+
+            // Убираем active у всех кнопок языка
+            langButtons.forEach((b) => b.classList.remove("active"));
+
+            // Добавляем active нажатой кнопке
+            btn.classList.add("active");
+
+            // Отправляем серверу уведомление о смене языка
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(
+                JSON.stringify({ type: "lang_change", lang: btn.dataset.lang }),
+              );
+            }
+          }
+        });
       });
 
       // ── Init ──

@@ -149,12 +149,28 @@ SYSTEM_PROMPT = (
     "'Привет! Сегодня мы будем учить слова на тему \"Приветствия\". Начнём с простого: как сказать \"Здравствуйте\" по-английски?' "
 
     "УПРАВЛЕНИЕ ПРОГРЕССОМ: "
-    "1. Веди список слов, которые ты уже вводил на этом уроке. НЕ ПОВТОРЯЙ их без необходимости. "
+    "1. Веди список слов, которые ты уже вводил на этом уроке. НЕ ПОВТОРЯЙ их без необходимости микро-повторения. "
     "2. Вводи новые слова постепенно. После того как ученик усвоит 3-4 слова, введи ещё 3-4 новых слова из той же темы. "
     "3. Предлагай новую тему ТОЛЬКО после того, как ученик выучит 10-20 слов по текущей теме. "
     "4. Если ученик говорит 'Нет' на предложение новой темы — не предлагай её снова в течение следующих 5-7 вопросов. "
-    "5. Если ученик правильно отвечает на вопрос — похвали и задай следующий вопрос с НОВЫМ словом. "
+    "5. Если ученик правильно отвечает на вопрос — похвали и задай следующий вопрос с НОВЫМ словом ИЛИ микро-повторением старого слова. "
     "6. Если ученик ошибается — дай подсказку и попроси повторить, но не переходи к новому слову, пока он не усвоит текущее."
+
+    "РАЗНООБРАЗИЕ ВОПРОСОВ (ОБЯЗАТЕЛЬНО): "
+    "1. НЕ повторяй один и тот же вопрос больше 2 раз подряд. "
+    "2. Чередуй типы вопросов: "
+    "   - Спроси перевод слова (Как будет 'мама'?) "
+    "   - Спроси произношение (Повтори за мной 'mother') "
+    "   - Спроси использование в предложении (Как сказать 'Моя мама'?) "
+    "   - Спроси противоположное слово (А как будет 'папа'?) "
+    "3. Если ученик отвечает правильно — переходи к НОВОМУ слову или фразе. "
+    "4. Если ученик ошибается — дай подсказку, но после 2 ошибок переходи к другому слову. "
+
+    "ПРАВИЛО МИКРО-ПОВТОРЕНИЙ (ОБЯЗАТЕЛЬНО): "
+    "1. После каждого нового вопроса ОБЯЗАТЕЛЬНО возвращайся к одному из ранее выученных слов. "
+    "2. Выбирай случайное слово из списка выученных (не последнее!). "
+    "3. Формулировка: 'А помнишь, как мы говорили [слово]? Как оно будет на английском?' "
+    "4. Чередуй: 1 новый вопрос → 1 микро-повторение → 1 новый вопрос."
 
     "ПРАВИЛА ОБЪЯСНЕНИЯ: "
     "1. В начале урока всегда объявляй тему. "
@@ -194,11 +210,16 @@ SYSTEM_PROMPT = (
     "- 'Слово \"sun\" — представь яркое солнце на небе.' "
     "Спрашивай ученика, что он видит, когда слышит это слово."
 
-    "МИКРО-ПОВТОРЕНИЯ: "
+    "МИКРО-ПОВТОРЕНИЯ (ОБЯЗАТЕЛЬНО): "
     "Через каждые 2-3 вопроса возвращайся к ранее изученному слову: "
     "- 'А теперь вспомни, как мы говорили \"яблоко\"? Правильно, \"apple\".' "
     "- 'Мы уже учили слово \"bread\". Как оно будет на английском?' "
     "Это помогает ученику не забывать пройденный материал."
+
+    "РАЗНООБРАЗИЕ ДИАЛОГА: "
+    "1. Не ограничивайся одной темой — чередуй слова из разных тем, которые ученик уже выучил. "
+    "2. Если тема 'Приветствия', но ученик выучил слова на тему 'Еда' — задай вопрос про еду. "
+    "3. Это помогает закрепить знания и делает урок интереснее."
 
     "ПРОВЕРКА ПОНИМАНИЯ: "
     "После каждого объяснения проверяй, понял ли ученик: "
@@ -246,7 +267,6 @@ def load_models(
     compute_type: str = "float16",
     download_root: str = "./models/whisper",
     word_timestamps: bool = True,
-    vad_parameters: dict = None,
     post_process: bool = True
 ):
     """Initialize Whisper, TTS and verify Ollama."""
@@ -272,7 +292,6 @@ def load_models(
                                      compute_type=compute_type,
                                      download_root=download_root,
                                      word_timestamps=word_timestamps,
-                                     vad_parameters=vad_parameters,
                                      post_process=post_process)
     print(f"✅ STT бэкенд: {stt_backend.get_name()}\n")
     
@@ -321,8 +340,17 @@ def force_russian_response(text: str) -> str:
     return text
 
 
-def transcribe_audio(audio_base64: str, debug: bool = False) -> tuple[str, str]:
-    """Transcribe audio using Whisper with English as default language."""
+def transcribe_audio(audio_base64: str, lang: str = None, debug: bool = False) -> tuple[str, str]:
+    """Transcribe audio using Whisper.
+    
+    Args:
+        audio_base64: Base64-encoded WAV audio
+        lang: Язык от клиента (если передан — используется, иначе определяется автоматически через Whisper)
+        debug: Включить отладочный вывод
+    
+    Returns:
+        (transcript, detected_lang)
+    """
     global stt_backend
     
     if stt_backend is None:
@@ -338,13 +366,17 @@ def transcribe_audio(audio_base64: str, debug: bool = False) -> tuple[str, str]:
         
         print(f"🎤 Обработка аудио ({len(wav_bytes)} байт), тема: {topic}")
         
-        # По умолчанию английский язык (устанавливается через last_detected_lang)
-        detected_lang = last_detected_lang
-        
-        print(f"🔍 Язык определён: [{detected_lang}]")
+        # Если язык передан от клиента — используем его, иначе определяем автоматически через Whisper
+        if lang:
+            detected_lang = lang
+            print(f"🔍 Язык от клиента: [{detected_lang}]")
+        else:
+            # Автоматическое определение языка через Whisper
+            detected_lang, _ = stt_backend._detect_language(wav_bytes, last_lang=last_detected_lang)
+            print(f"🔍 Язык автоматически определён: [{detected_lang}]")
         
         # Транскрибируем аудио с учётом языка
-        transcript, _ = stt_backend.transcribe(wav_bytes, topic=topic)
+        transcript, detected_lang = stt_backend.transcribe(wav_bytes, lang=detected_lang)
         
         if debug and transcript:
             print(f"🎤 Транскрипция [{detected_lang}]: '{transcript}'")
@@ -370,7 +402,8 @@ def transcribe_audio(audio_base64: str, debug: bool = False) -> tuple[str, str]:
         import traceback
         if debug:
             traceback.print_exc()
-        return "", "en"  # По умолчанию английский язык
+        # Если язык не был передан — возвращаем английский по умолчанию
+        return "", "en" if not lang else lang
 
 
 async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = None, user_text: str = None, history: list = None, session_start_time: float = None) -> dict:
@@ -469,7 +502,7 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
         content = msg_data.get("content", "") if msg_data else ""
         
         try:
-            print(f"🔍 Сырой content: {repr(content[:100])}...")
+            print(f"🔍 Сырой content: {repr(content)}...")
             
             # Ищем JSON паттерн внутри текста (с поддержкой массивов)
             json_match = re.search(r'\{(?:[^{}]|\[(?:[^][])*\])+\}', content, re.DOTALL)
@@ -541,9 +574,10 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
+    global last_detected_lang
     
-    progress = load_global_progress('en')
-    conversation_history = load_history_from_file("en")
+    progress = load_global_progress(last_detected_lang)
+    conversation_history = load_history_from_file(last_detected_lang)
     interrupted = asyncio.Event()
     msg_queue = asyncio.Queue()
     
@@ -551,7 +585,7 @@ async def websocket_endpoint(ws: WebSocket):
     session_minutes, _ = get_global_session_time(progress)
     if session_minutes == 0 or progress["session"].get("start_time") is None:
         topic = progress.get("current_topic", "Приветствия")
-        start_new_global_session(progress, topic, 'en')
+        start_new_global_session(progress, topic, last_detected_lang)
         session_minutes = 0
 
     async def receiver():
@@ -577,15 +611,20 @@ async def websocket_endpoint(ws: WebSocket):
             
             # 1. Транскрипция (текст, если нет аудио)
             transcript = msg.get("text") or ""
+            
+            # Получаем язык от клиента (если передан), иначе используем last_detected_lang
+            client_lang = msg.get("lang", None)
             lang = last_detected_lang
+            
             if msg.get("audio"):
+                # Транскрибируем аудио — если язык передан от клиента, используется он, иначе определяется автоматически через Whisper
                 transcript, detected_lang = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: transcribe_audio(msg["audio"], debug=True)
+                    None, lambda: transcribe_audio(msg["audio"], lang=client_lang, debug=True)
                 )
                 lang = detected_lang
 
 
-            # 2. LLM — только если есть транскрипция и прошло достаточно времени после последнего сообщения пользователя
+            # 2. LLM — только если есть транскрипция
             if transcript:
                 t0 = time.time()
                 try:
@@ -738,6 +777,6 @@ if __name__ == "__main__":
     print(f"  Model: {OLLAMA_MODEL}")
     print(f"  Port: {port}")
     print("="*60)
-    print(f"\n  🌐 Open in browser: http://localhost:{port}")
+    print(f"\n  [Open in browser] http://localhost:{port}")
     print("\n" + "="*60 + "\n")
     uvicorn.run(app, host="0.0.0.0", port=port)
