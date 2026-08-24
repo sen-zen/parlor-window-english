@@ -42,7 +42,7 @@ def is_english_word(word: str, english_dict: set[str] = None) -> bool:
         return True
     
     # Для одиночного слова проверяем, что оно не служебное
-    if word.lower() in skip_words:
-        return False
+    # if word.lower() in skip_words:
+    #     return False
     
     return True

@@ -179,7 +179,7 @@ def save_progress(progress: dict, lang: str = 'en'):
         print(f"⚠️ Ошибка сохранения [{lang}]: {e}")
 
 
-def update_word_progress(progress: dict, word: str, success: bool = True):
+def update_word_progress(progress: dict, word: str, success: bool = True, level: str = None):
     """Обновляет прогресс по конкретному слову.
     
     Args:
@@ -206,10 +206,14 @@ def update_word_progress(progress: dict, word: str, success: bool = True):
         progress["learned_words"][word]["correct_count"] += 1
         if not progress["learned_words"][word]["first_learned"]:
             progress["learned_words"][word]["first_learned"] = datetime.now().isoformat()
-        progress["learned_words"][word]["last_practiced"] = datetime.now().isoformat()
     else:
-        progress["learned_words"][word]["wrong_count"] += 1
-    
+        progress["learned_words"][word]["correct_count"] -= 2
+        
+    progress["learned_words"][word]["last_practiced"] = datetime.now().isoformat()
+
+    if level:
+        progress["learned_words"][word]["level"] = level
+
     return progress
 
 
@@ -221,20 +225,42 @@ def get_learned_words(progress: dict = None, lang: str = None) -> list:
         lang: Язык прогресса. Если None — определяется из прогресса.
         
     Returns:
-        Список выученных слов
+        Возвращает список выученных слов, отсортированный по дате последнего использования (сначала недавние).
     """
     if progress is None:
         progress = load_progress(lang)
     
     # Определяем язык, если не указан в прогрессе
     if lang is None:
-        lang = progress.get("language", "ru")
+        lang = progress.get("language", "en")
+
+    THRESHOLDS = {
+        "A1": 3,
+        "A2": 8,
+        "B1": 14,
+    }
     
-    learned = []
+    words_data = []
     for word, data in progress["learned_words"].items():
-        if data.get("correct_count", 0) >= 2:  # Считаем выученным после 2 правильных ответов
-            learned.append(word)
-    return learned
+        correct_count = data.get("correct_count", 0)
+        level = data.get("level", 'A1')
+        threshold = THRESHOLDS.get(level, 1)
+        if correct_count >= threshold:
+            last_practiced = data.get("last_practiced")
+            words_data.append({
+                "word": word,
+                "level": level,
+                "threshold": threshold,
+                "last_practiced": last_practiced
+            })
+
+    # None → отправляем в конец
+    words_data.sort(
+        key=lambda x: (x["last_practiced"] is None, x["last_practiced"] if x["last_practiced"] else ""),
+        reverse=True
+    )
+
+    return words_data
 
 
 def get_words_needing_review(progress: dict = None, lang: str = None, days: int = 7) -> list:
