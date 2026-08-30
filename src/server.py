@@ -43,6 +43,11 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 load_dotenv()
+# Конфигурация LLM бэкенда lmstudio / ollama
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "lmstudio").lower()
+
+LM_STUDIO_BASE_URL = os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
+LM_STUDIO_MODEL = os.environ.get("LM_STUDIO_MODEL", "google/gemma-4-e4b-no-thinking")
 
 # Configuración de Ollama
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -112,24 +117,58 @@ HISTORY_FILE = Path(__file__).parent / "history.json"
 
 # История теперь управляется через utils.history
 
-def check_ollama_connection():
-    """Verify Ollama is running and model is available."""
-    try:
-        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
-        if response.status_code != 200:
-            raise RuntimeError(f"Ollama returned {response.status_code}")
-        
-        models = response.json().get("models", [])
-        model_names = [m.get("name", "") for m in models]
-        
-        if OLLAMA_MODEL not in model_names:
-            print(f"\n⚠️  Model '{OLLAMA_MODEL}' not found!")
-            raise RuntimeError(f"Model {OLLAMA_MODEL} not found")
-        
-        print(f"✅ Ollama connected with model: {OLLAMA_MODEL}")
-        return True
-    except Exception as e:
-        raise RuntimeError(f"Ollama connection failed: {e}")
+def check_llm_connection():
+    """Verify LLM backend is running and model is available."""
+    global LLM_BACKEND
+    
+    if LLM_BACKEND == "ollama":
+        try:
+            response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+            if response.status_code != 200:
+                raise RuntimeError(f"Ollama returned {response.status_code}")
+            
+            models = response.json().get("models", [])
+            model_names = [m.get("name", "") for m in models]
+            
+            if OLLAMA_MODEL not in model_names:
+                print(f"\n⚠️  Model '{OLLAMA_MODEL}' not found!")
+                raise RuntimeError(f"Model {OLLAMA_MODEL} not found")
+            
+            print(f"✅ Ollama connected with model: {OLLAMA_MODEL}")
+            return True
+            
+        except Exception as e:
+            raise RuntimeError(f"Ollama connection failed: {e}")
+    
+    elif LLM_BACKEND == "lmstudio":
+        try:
+            # Проверяем, что LM Studio сервер запущен
+            response = requests.get(f"{LM_STUDIO_BASE_URL}/models", timeout=5)
+            if response.status_code != 200:
+                raise RuntimeError(f"LM Studio returned {response.status_code}")
+            
+            # Проверяем, что модель загружена
+            models = response.json().get("data", [])
+            model_names = [m.get("id", "") for m in models]
+            
+            if LM_STUDIO_MODEL not in model_names:
+                print(f"\n⚠️  Model '{LM_STUDIO_MODEL}' not found in LM Studio!")
+                print(f"   Доступные модели: {', '.join(model_names)}")
+                raise RuntimeError(f"Model {LM_STUDIO_MODEL} not found")
+            
+            print(f"✅ LM Studio connected with model: {LM_STUDIO_MODEL}")
+            return True
+            
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError(
+                f"LM Studio connection failed: server not running at {LM_STUDIO_BASE_URL}\n"
+                f"   Убедитесь, что LM Studio запущен и сервер включён (Developer → Start Server)"
+            )
+        except Exception as e:
+            raise RuntimeError(f"LM Studio connection failed: {e}")
+    
+    else:
+        raise ValueError(f"Неизвестный бэкенд: {LLM_BACKEND}. Доступны: ollama, lmstudio")
 
 
 def load_models(
@@ -166,7 +205,7 @@ def load_models(
                                      post_process=post_process)
     print(f"✅ STT бэкенд: {stt_backend.get_name()}\n")
     
-    check_ollama_connection()
+    check_llm_connection()
     
     print("\nLoading TTS backend...")
     tts_backend = tts.load()
@@ -277,8 +316,74 @@ def transcribe_audio(audio_base64: str, lang: str = None, debug: bool = False) -
         # Если язык не был передан — возвращаем английский по умолчанию
         return "", "en" if not lang else lang
 
+async def call_llm(messages: list, temperature: float = 0.3, max_tokens: int = 1500) -> str:
+    """Вызывает LLM через выбранный бэкенд."""
+    LLM_JSON_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "words": {"type": "array", "items": {"type": "string"}},
+            "mistakes": {"type": "array", "items": {"type": "string"}},
+            "topic": {"type": "string"},
+            "keywords": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["text", "words", "mistakes", "topic", "keywords"]
+    }
 
-async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = None, user_text: str = None, history: list = None, session_start_time: float = None) -> dict:
+    if LLM_BACKEND == "lmstudio":
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{LM_STUDIO_BASE_URL}/chat/completions",
+                json={
+                    "model": LM_STUDIO_MODEL,
+                    "messages": messages,
+                    "stream": False,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stop": ["\n\n", "\n---"],
+                    "chat_template_kwargs": {"enable_thinking": False},
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "tutor_response",
+                            "strict": True,
+                            "schema": LLM_JSON_SCHEMA
+                        }
+                    }
+                }
+            )
+            if response.status_code != 200:
+                raise RuntimeError(f"LM Studio error: {response.status_code}")
+            res_json = response.json()
+            return res_json["choices"][0]["message"]["content"]
+    
+    elif LLM_BACKEND == "ollama":
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "messages": messages,
+                    "stream": False,
+                    "format": LLM_JSON_SCHEMA,
+                    "think": False,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": max_tokens,
+                        "stop": ["\n\n", "\n---"]
+                    }
+                }
+            )
+            if response.status_code != 200:
+                raise RuntimeError(f"Ollama error: {response.status_code}")
+            res_json = response.json()
+            return res_json.get("message", {}).get("content", "")
+    
+    else:
+        raise ValueError(f"Неизвестный бэкенд: {LLM_BACKEND}. Доступны: ollama, lmstudio")
+
+
+async def llm_chat(transcript: str, lang: str = "en", images: list[str] = None, user_text: str = None, history: list = None, session_start_time: float = None) -> dict:
     """Send chat request to Ollama with language context and no-CoT config."""
 
     lang_inst = (
@@ -373,28 +478,7 @@ async def ollama_chat(transcript: str, lang: str = "en", images: list[str] = Non
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{OLLAMA_BASE_URL}/api/chat",
-                    json={
-                        "model": OLLAMA_MODEL,
-                        "messages": messages,
-                        "stream": False,
-                        "format": "json",  # Требовать JSON формат от модели
-                        "think": False,  # Desactivar CoT para Gemma 4
-                        "options": {
-                            "temperature": 0.3,  # Уменьшаем для более детерминированного вывода
-                            "num_predict": 1500,
-                            "stop": ["\n\n", "\n---"]  # Избегаем пустых ответов
-                        }
-                    }
-                )
-                
-                if response.status_code != 200:
-                    raise RuntimeError(f"Ollama error: {response.status_code}")
-                
-                res_json = response.json()
-                msg_data = res_json.get("message", {})
-                content = msg_data.get("content", "") if msg_data else ""
+                content = await call_llm(messages)
                 
                 print(f"🔍 Сырой content: {content}")
                     
@@ -534,13 +618,29 @@ async def websocket_endpoint(ws: WebSocket):
             if not transcript or len(transcript.strip()) < 2:
                 print(f"⚠️ Пустая или слишком короткая транскрипция, отправляем приветствие")
                 # Отправляем стандартное сообщение
+                text = "Извините, я не расслышал. Повторите, пожалуйста."
                 await ws.send_text(json.dumps({
                     "type": "text",
-                    "text": "Извините, я не расслышал. Повторите, пожалуйста.",
+                    "text": text,
                     "llm_time": 0,
                     "transcription": "",
                     "language": lang
                 }))
+                await ws.send_text(json.dumps({
+                    "type": "audio_start",
+                    "sample_rate": tts_backend.sample_rate,
+                    "sentence_count": len([text]),
+                }))
+                pcm = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda s=text: tts_backend.generate(s, lang=last_detected_lang)
+                )
+                pcm_int16 = (pcm * 32767).clip(-32768, 32767).astype(np.int16)
+                await ws.send_text(json.dumps({
+                    "type": "audio_chunk",
+                    "audio": base64.b64encode(pcm_int16.tobytes()).decode(),
+                    "index": i,
+                }))
+                await ws.send_text(json.dumps({"type": "audio_end"}))
                 continue
 
             # 2. LLM — только если есть транскрипция
@@ -551,7 +651,7 @@ async def websocket_endpoint(ws: WebSocket):
 
                     conversation_history.append({"role": "user", "content": transcript or "..."})
 
-                    llm_response = await ollama_chat(
+                    llm_response = await llm_chat(
                         transcript=transcript,
                         lang=last_detected_lang,
                         images=[msg["image"]] if msg.get("image") else None,
